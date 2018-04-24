@@ -3,46 +3,41 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"bytes"
 )
 
 const site = "https://httpstatusdogs.com/"
+const output = "OUTPUT_DIR"
 
-const output = "/tmp/images-scrapper/"
+var regex = regexp.MustCompile(`([0-9]{3}.jpg)`)
 
 func main() {
 	fmt.Println("Inciando scrapper!")
-	request()
+	process()
 	fmt.Println("Scrapper finalizado!")
 }
 
-func request() {
+func process() {
 	response, err := http.Get(site)
 	check(err)
-
 	defer response.Body.Close()
 
-	content, err := ioutil.ReadAll(response.Body)
-	check(err)
+	var write bytes.Buffer
+	io.Copy(&write, response.Body)
 
-	regex := regexp.MustCompile("<* src=[^>]*\\salt=[^>]*")
-	values := regex.FindAll(content, -1)
+	values := regex.FindAllString(write.String(), -1)
 
-	for _, value := range values {
-		data := formatHTMLTag(value)
-		image, description := getValues(data)
-
-		downloadImage(image, description)
+	for _, image := range values {
+		downloadImage(image)
 	}
-
 }
 
-func downloadImage(image string, description string) {
-	url := site + image
+func downloadImage(image string) {
+	url := site + "img/" + image
 
 	response, err := http.Get(url)
 	check(err)
@@ -50,25 +45,12 @@ func downloadImage(image string, description string) {
 
 	replacer := strings.NewReplacer("/", "-")
 	file, err := os.Create(output + replacer.Replace(image))
-
 	check(err)
 
 	_, err = io.Copy(file, response.Body)
 	check(err)
 
 	file.Close()
-}
-
-func getValues(data []string) (image string, description string) {
-	image = strings.Join(data[:1], "")
-	description = strings.Join(data[1:], "")
-	return
-}
-
-func formatHTMLTag(value []byte) []string {
-	line := strings.TrimSpace(string(value))
-	replacer := strings.NewReplacer("\"", "", "src=", "", "alt=", "")
-	return strings.Split(replacer.Replace(line), " ")
 }
 
 func check(e error) {
